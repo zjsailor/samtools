@@ -42,6 +42,7 @@ DEALINGS IN THE SOFTWARE.  */
 #include "htslib/klist.h"
 #include "htslib/kstring.h"
 #include "htslib/sam.h"
+#include "htslib/cram.h"
 #include "sam_opts.h"
 #include "samtools.h"
 
@@ -1133,6 +1134,7 @@ int bam_merge_core2(int by_qname, const char *out, const char *mode,
     int *rtrans = NULL;
     merged_header_t *merged_hdr = init_merged_header();
     if (!merged_hdr) return -1;
+    refs_t *refs = NULL;
 
     // Is there a specified pre-prepared header to use for output?
     if (headers) {
@@ -1227,6 +1229,12 @@ int bam_merge_core2(int by_qname, const char *out, const char *mode,
         if ((translation_tbl+i)->lost_coord_sort && !by_qname) {
             fprintf(stderr, "[bam_merge_core] Order of targets in file %s caused coordinate sort to be lost\n", fn[i]);
         }
+
+        if (!refs && cram_get_refs(fp[i]))
+            refs = cram_get_refs(fp[i]);
+
+        if (refs && hts_set_opt(fp[i], CRAM_OPT_SHARED_REF, refs))
+            return -1;  // FIXME: memory leak
     }
 
     // Did we get an @HD line?
@@ -1351,6 +1359,9 @@ int bam_merge_core2(int by_qname, const char *out, const char *mode,
         return -1;
     }
     if (!(flag & MERGE_UNCOMP)) hts_set_threads(fpout, n_threads);
+
+    if (refs && hts_set_opt(fpout, CRAM_OPT_SHARED_REF, refs))
+        return -1;  // FIXME: memory leak
 
     // Begin the actual merge
     ks_heapmake(heap, n, heap);
