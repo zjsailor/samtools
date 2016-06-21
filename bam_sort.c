@@ -1361,7 +1361,7 @@ int bam_merge_core2(int by_qname, const char *out, const char *mode,
     if (!(flag & MERGE_UNCOMP)) hts_set_threads(fpout, n_threads);
 
     if (refs && hts_set_opt(fpout, CRAM_OPT_SHARED_REF, refs))
-        return -1;  // FIXME: memory leak
+        goto fail;
 
     // Begin the actual merge
     ks_heapmake(heap, n, heap);
