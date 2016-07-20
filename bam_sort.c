@@ -1121,7 +1121,7 @@ int bam_merge_core2(int by_qname, const char *out, const char *mode,
                     const char *reg, int n_threads, const char *cmd,
                     const htsFormat *in_fmt, const htsFormat *out_fmt)
 {
-    samFile *fpout, **fp = NULL;
+    samFile *fpout = NULL, **fp = NULL;
     heap1_t *heap = NULL;
     bam_hdr_t *hout = NULL;
     bam_hdr_t *hin  = NULL;
@@ -1192,13 +1192,13 @@ int bam_merge_core2(int by_qname, const char *out, const char *mode,
     }
 
     if (hin) {
-        // Popluate merged_hdr from the pre-prepared header
+        // Populate merged_hdr from the pre-prepared header
         trans_tbl_t dummy;
         int res;
         res = trans_tbl_init(merged_hdr, hin, &dummy, flag & MERGE_COMBINE_RG,
                              flag & MERGE_COMBINE_PG, true, NULL);
         trans_tbl_destroy(&dummy);
-        if (res) return -1; // FIXME: memory leak
+        if (res) goto fail;
     }
 
     // open and read the header from each file
@@ -1219,7 +1219,7 @@ int bam_merge_core2(int by_qname, const char *out, const char *mode,
                            flag & MERGE_COMBINE_RG, flag & MERGE_COMBINE_PG,
                            (flag & MERGE_FIRST_CO)? (i == 0) : true,
                            RG[i]))
-            return -1; // FIXME: memory leak
+            goto fail;
 
         // TODO sam_itr_next() doesn't yet work for SAM files,
         // so for those keep the headers around for use with sam_read1()
@@ -1234,7 +1234,7 @@ int bam_merge_core2(int by_qname, const char *out, const char *mode,
             refs = cram_get_refs(fp[i]);
 
         if (refs && hts_set_opt(fp[i], CRAM_OPT_SHARED_REF, refs))
-            return -1;  // FIXME: memory leak
+            goto fail;
     }
 
     // Did we get an @HD line?
@@ -1250,7 +1250,7 @@ int bam_merge_core2(int by_qname, const char *out, const char *mode,
 
     // Transform the header into standard form
     hout = finish_merged_header(merged_hdr);
-    if (!hout) return -1;  // FIXME: memory leak
+    if (!hout) goto fail;
 
     // If we're only merging a specified region move our iters to start at that point
     if (reg) {
@@ -1351,12 +1351,11 @@ int bam_merge_core2(int by_qname, const char *out, const char *mode,
     // Open output file and write header
     if ((fpout = sam_open_format(out, mode, out_fmt)) == 0) {
         print_error_errno(cmd, "failed to create \"%s\"", out);
-        return -1;
+        goto fail;
     }
     if (sam_hdr_write(fpout, hout) != 0) {
         print_error_errno(cmd, "failed to write header to \"%s\"", out);
-        sam_close(fpout);
-        return -1;
+        goto fail;
     }
     if (!(flag & MERGE_UNCOMP)) hts_set_threads(fpout, n_threads);
 
@@ -1374,8 +1373,7 @@ int bam_merge_core2(int by_qname, const char *out, const char *mode,
         }
         if (sam_write1(fpout, hout, b) < 0) {
             print_error_errno(cmd, "failed writing to \"%s\"", out);
-            sam_close(fpout);
-            return -1;
+            goto fail;
         }
         if ((j = (iter[heap->i]? sam_itr_next(fp[heap->i], iter[heap->i], b) : sam_read1(fp[heap->i], hdr[heap->i], b))) >= 0) {
             bam_translate(b, translation_tbl + heap->i);
@@ -1431,6 +1429,7 @@ int bam_merge_core2(int by_qname, const char *out, const char *mode,
         if (heap && heap[i].b) bam_destroy1(heap[i].b);
     }
     if (hout) bam_hdr_destroy(hout);
+    if (fpout) sam_close(fpout);
     free(RG);
     free(translation_tbl);
     free(hdr);
