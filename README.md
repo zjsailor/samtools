@@ -36,3 +36,9 @@ You can alter this to a source tree elsewhere or to a previously-installed
 HTSlib by configuring with `--with-htslib=DIR`.
 
 [download]: http://www.htslib.org/download/
+
+vim .bash_profile
+   PATH=$PATH:$HOME/bin:/home/soft/fastx/
+   OR: vim ~/.bashrc
+        export PATH=/opt/samtools1.9/bin:$PATH
+	  source ~/.bashrc
